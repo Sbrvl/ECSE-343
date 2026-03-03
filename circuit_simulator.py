@@ -77,12 +77,23 @@ class CircuitSimulator:
         f_vect[2] = -1e-13 * (np.exp((v1 - v2) / 0.025) - 1)
         return f_vect
 
-    def get_jac(self,x):
-        # Jacobian of the non-linear element vector for Newton-Raphson solver
-        """ YOUR CODE HERE:
-        jac = ...
-        """
-        return jac
+    def get_jac(self, x):
+        # Jacobian of f(x) (diode injection vector)
+        Is = 1e-13
+        Vt = 0.025
+
+        v1 = x[1]
+        v2 = x[2]
+
+        g = (Is / Vt) * np.exp((v1 - v2) / Vt)
+
+        jac = np.zeros((4, 4))
+        jac[1, 1] =  g
+        jac[1, 2] = -g
+        jac[2, 1] = -g
+        jac[2, 2] =  g
+        return jac    
+
     def BEuler(self, x_0, delta_t, T, noise = False):
         # Get the G and C matrices
         G = self.G_mat
@@ -109,30 +120,64 @@ class CircuitSimulator:
         tpoints = np.array(tpoints)
         return y, tpoints
 
-    def NewtonRaphson(self, A, b, x, epsilon):
-        # Iterative solver for non-linear systems
-        """ YOUR CODE HERE:
-        x = ...
+    def NewtonRaphson(self, A, b, x, epsilon, max_iter=50):
         """
+        Solve: A x + f(x) = b  (nonlinear due to diode f(x))
+        using Newton-Raphson.
+
+        Residual: r(x) = A x + f(x) - b
+        Jacobian: J(x) = A + df/dx
+        """
+        x = x.copy()
+
+        for _ in range(max_iter):
+            f = self.get_f_vect(x)
+            r = A @ x + f - b  # residual
+
+            if np.linalg.norm(r, ord=2) < epsilon:
+                return x
+
+            J = A + self.get_jac(x)
+
+            dx = np.linalg.solve(J, -r)
+            x = x + dx
+
+            if np.linalg.norm(dx, ord=2) < epsilon:
+                return x
+
         return x
+
     def getSensitivities(self, x_pred, G_mat, C_mat, R, delta_t):
         # Calculates sensitivity of nodal voltages (x) to parameters R and C
         dxdr = []
+        dxdc = []
+
+        dGdR = self.get_dGdR(R)
+        dCdC = self.get_dCdC()  # derivative of C_mat wrt scalar C
+
         for i in range(len(x_pred)):
             jac = self.get_jac(x_pred[i])
-            dGdR = self.get_dGdR(R)
-            if(i == 0):
-                # Initial sensitivity calculation
-                tempr = -dGdR@x_pred[i]
-            else:
-                # Propagation of sensitivity through time steps
-                tempr = -dGdR@x_pred[i] + (C_mat/delta_t)@dxdr[i-1]
 
-            A = G_mat + C_mat/delta_t + jac
-            dxdr.append(np.linalg.solve(A,tempr))
-            """ YOUR CODE HERE:
-            dxdc = ...
-            """
+            A = G_mat + C_mat / delta_t + jac
+
+            # ---- dx/dR ----
+            if i == 0:
+                tempr_r = -(dGdR @ x_pred[i])
+            else:
+                tempr_r = -(dGdR @ x_pred[i]) + (C_mat / delta_t) @ dxdr[i - 1]
+            dxdr.append(np.linalg.solve(A, tempr_r))
+
+            # ---- dx/dC ----
+            if i == 0:
+                tempr_c = -(dCdC / delta_t) @ x_pred[i]
+            else:
+                tempr_c = (
+                    -(dCdC / delta_t) @ x_pred[i]
+                    + (dCdC / delta_t) @ x_pred[i - 1]
+                    + (C_mat / delta_t) @ dxdc[i - 1]
+                )
+            dxdc.append(np.linalg.solve(A, tempr_c))
+
         dxdr = np.array(dxdr)
         dxdc = np.array(dxdc)
         return dxdr, dxdc
