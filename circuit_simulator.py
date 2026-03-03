@@ -1,6 +1,8 @@
 import numpy as np
 
+
 class CircuitSimulator:
+    
     def __init__(self, amplitude, frequency, R_test, C_test):
         """
         Class constructor.
@@ -10,6 +12,8 @@ class CircuitSimulator:
             frequency:   Input signal frequency.
             R_test:      Resistor value.
             C_test:      Capacitor value.
+            Is = 1e-13 Saturation current
+            Vt = 0.025  # Thermal voltage (V)
         """
         # Initialize the MNA parameters
         self.amplitude = amplitude
@@ -18,6 +22,8 @@ class CircuitSimulator:
         self.C_test = C_test
         self.G_mat = self.get_G(self.R_test)
         self.C_mat = self.get_C(self.C_test)
+        
+        
     def get_G(self, R):
         # Conductance matrix (G) representing static components (resistors/source connections)
         G_mat = np.array([
@@ -78,17 +84,30 @@ class CircuitSimulator:
         return f_vect
 
     def get_jac(self,x):
-        # Jacobian of the non-linear element vector for Newton-Raphson solver
-        """ YOUR CODE HERE:
-        jac = ...
-        """
+        Is = 1e-13
+        Vt = 0.025
+        
+        V2 = x[1]
+        V3 = x[2]
+        
+        gd = (Is / Vt) * np.exp((V2 - V3) / Vt)
+        
+        jac = np.zeros((4, 4))
+        
+        # Fill Jacobian Matrix
+        jac[1, 1] = gd    # d(f2)/dV2
+        jac[1, 2] = -gd   # d(f2)/dV3
+        jac[2, 1] = -gd   # d(f3)/dV2
+        jac[2, 2] = gd    # d(f3)/dV3
+        
         return jac
+    
     def BEuler(self, x_0, delta_t, T, noise = False):
         # Get the G and C matrices
         G = self.G_mat
         C = self.C_mat
         # Time-stepping simulation using the Backward Euler method
-        x = x_0
+        x = x_0.copy()
         y = []
         tpoints = []
         t = 0
@@ -100,7 +119,7 @@ class CircuitSimulator:
             x = self.NewtonRaphson(A,b,x, 1e-6)
             tpoints.append(t)
             t += delta_t
-            y.append(x)
+            y.append(x.copy()) #y.append(x)
         y = np.array(y)
         if noise:
             sigma = np.std(y,axis = 0)*0.025
@@ -109,30 +128,62 @@ class CircuitSimulator:
         tpoints = np.array(tpoints)
         return y, tpoints
 
-    def NewtonRaphson(self, A, b, x, epsilon):
+    def NewtonRaphson(self, A, b, x, epsilon=1e-6):
         # Iterative solver for non-linear systems
-        """ YOUR CODE HERE:
-        x = ...
-        """
+        max_iter = 100 
+        i = 0
+        while max_iter > i:
+            
+            f_x = self.get_f_vect(x)
+            
+            psi = A @ x + f_x - b
+      
+            if np.linalg.norm(psi) < epsilon:
+                return x
+            
+            jac = self.get_jac(x)
+            J_psi = A + jac
+            
+            # 5. Solve for the update step (delta_x)
+            # J_psi * delta_x = psi
+            delta_x = np.linalg.solve(J_psi, psi)
+            
+            x -= delta_x
+            
+            i+=1
         return x
+    
     def getSensitivities(self, x_pred, G_mat, C_mat, R, delta_t):
         # Calculates sensitivity of nodal voltages (x) to parameters R and C
         dxdr = []
+        dxdc = []
+        
         for i in range(len(x_pred)):
             jac = self.get_jac(x_pred[i])
             dGdR = self.get_dGdR(R)
+            dCdC = self.get_dCdC()
+            
             if(i == 0):
                 # Initial sensitivity calculation
                 tempr = -dGdR@x_pred[i]
+                
+                tempc = np.zeros((4,))
+                
             else:
                 # Propagation of sensitivity through time steps
                 tempr = -dGdR@x_pred[i] + (C_mat/delta_t)@dxdr[i-1]
+                
+                x_dot = (x_pred[i] - x_pred[i-1]) / delta_t
+                
+                tempc = (C_mat/delta_t) @ dxdc[i-1] - dCdC @ x_dot
 
             A = G_mat + C_mat/delta_t + jac
             dxdr.append(np.linalg.solve(A,tempr))
+            dxdc.append(np.linalg.solve(A, tempc))
             """ YOUR CODE HERE:
             dxdc = ...
             """
+                
         dxdr = np.array(dxdr)
         dxdc = np.array(dxdc)
         return dxdr, dxdc
