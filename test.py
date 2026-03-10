@@ -60,4 +60,4 @@ print(f"Cost                     : {cost}.")
 X, y = create_dataset(num_samples, amplitude, frequency, delta_t, T, noise=noisy_dataset)
 
 # Export data for training 
-save_dataset(X, y)
+save_dataset(X, y, log_targets=True)

@@ -54,7 +54,7 @@ def create_dataset(num_samples, amplitude, f, delta_t, T, noise):
     for i in range(num_samples):
         # Randomly sample resistance (1 to 2.5k Ohms) and capacitance (0.1 to 5 microFarads)
         R = np.random.uniform(1.0, 2.5e3)     # Ohms: [1, 2500]
-        C = np.random.uniform(0.1e-6, 5e-6)   # Farads: [0.1uF, 5uF]
+        C = np.exp(np.random.uniform(np.log(0.1e-6), np.log(5e-6))) # Farads: [0.1uF, 5uF]- changing to log sampling to get more low values of capacitance
         # Initialize the Modified Nodal Analysis (MNA) simulator with current parameters
         mna = CircuitSimulator(amplitude, f, R, C)
         y.append([R, C])
