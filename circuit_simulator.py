@@ -144,7 +144,7 @@ class CircuitSimulator:
             jac = self.get_jac(x)
             J_psi = A + jac
             
-            # 5. Solve for the update step (delta_x)
+            # Solve for the update step (delta_x)
             # J_psi * delta_x = psi
             delta_x = np.linalg.solve(J_psi, psi)
             
@@ -180,10 +180,7 @@ class CircuitSimulator:
             A = G_mat + C_mat/delta_t + jac
             dxdr.append(np.linalg.solve(A,tempr))
             dxdc.append(np.linalg.solve(A, tempc))
-            """ YOUR CODE HERE:
-            dxdc = ...
-            """
-                
+            
         dxdr = np.array(dxdr)
         dxdc = np.array(dxdc)
         return dxdr, dxdc
