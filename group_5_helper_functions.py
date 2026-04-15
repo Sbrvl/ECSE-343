@@ -1,6 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from circuit_simulator import CircuitSimulator
+from group_5_circuit_simulator import CircuitSimulator
 import pickle
 
 def plot_data(x_test, tpoints):
